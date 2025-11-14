@@ -17,11 +17,9 @@ function lineSum(string $filename, int $lineNumber): int {
             continue;
         }
         if ($current === $lineNumber) {
-            // Split on whitespace
             $tokens = preg_split('/\s+/', $trimmed);
 
             foreach ($tokens as $token) {
-                // Validate integer (handles +3, -4, 10, etc.)
                 if (filter_var($token, FILTER_VALIDATE_INT) !== false) {
                     $result += (int)$token;
                 }
