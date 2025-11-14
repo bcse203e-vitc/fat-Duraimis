@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Parking Charges Report</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        table { border-collapse: collapse; margin-top: 15px; }
+        td, th { border: 1px solid #444; padding: 5px 10px; }
+        #summary { margin-top: 20px; font-size: 1.1em; }
+    </style>
+</head>
+<body>
+
+<h2>Parking Charges Generator</h2>
+
+<input type="file" id="csvFile" accept=".csv"><br><br>
+<button id="processBtn">Process File</button>
+
+<h3>Report</h3>
+<div id="output"></div>
+
+<h3>Summary</h3>
+<div id="summary"></div>
+
+<button id="downloadBtn" style="display:none;">Download charges_report.csv</button>
+
+<script>
+
+function calculate_charges(duration_hours) {
+    if (duration_hours <= 0) return { charge: 0, error: true };
+
+    let hours = Math.ceil(duration_hours);
+    let totalCharge = 0;
+
+    while (hours > 0) {
+        let blockHours = Math.min(hours, 24);
+
+        let blockCharge = 2.0; 
+        if (blockHours > 3) {
+            blockCharge += (blockHours - 3) * 0.50;
+        }
+        blockCharge = Math.min(blockCharge, 10.0); 
+
+        totalCharge += blockCharge;
+        hours -= blockHours;
+    }
+
+    return { charge: totalCharge, error: false };
+}
+function parseCSV(text) {
+    return text.trim().split("\n").map(row => row.split(",").map(s => s.trim()));
+}
+
+function makeCSV(rows) {
+    return rows.map(r => r.join(",")).join("\n");
+}
+
+$("#processBtn").click(function() {
+    let file = $("#csvFile")[0].files[0];
+    if (!file) {
+        alert("Please choose yesterday.csv");
+        return;
+    }
+
+    let reader = new FileReader();
+    reader.readAsText(file);
+
+    reader.onload = function() {
+        let rows = parseCSV(reader.result);
+
+        let report = [["customer_id", "duration_hours", "charge", "error_flag"]];
+
+        let totalReceipts = 0;
+        let dailyMaxCount = 0;
+        let longestStay = 0;
+        let longestCustomers = [];
+
+        let html = "<table><tr><th>Customer ID</th><th>Duration (hrs)</th><th>Charge</th><th>Error</th></tr>";
+
+        rows.forEach(r => {
+            let [customer_id, entry_ts, exit_ts] = r;
+
+            let entry = new Date(entry_ts);
+            let exit = new Date(exit_ts);
+
+            let error = false;
+            let duration = 0;
+            let charge = 0;
+
+            if (!(entry instanceof Date) || !(exit instanceof Date) ||
+                isNaN(entry) || isNaN(exit) || exit <= entry) {
+
+                error = true;
+
+            } else {
+                duration = (exit - entry) / (1000 * 60 * 60); // hour difference
+                let result = calculate_charges(duration);
+                charge = result.charge;
+                error = result.error;
+            }
+
+            let rounded = Math.ceil(duration);
+
+            if (!error) {
+                totalReceipts += charge;
+                if (charge === 10 || charge === 20 || charge === 30) {
+                    dailyMaxCount++;
+                }
+                if (rounded > longestStay) {
+                    longestStay = rounded;
+                    longestCustomers = [customer_id];
+                } else if (rounded === longestStay) {
+                    longestCustomers.push(customer_id);
+                }
+            }
+
+    
+            html += `<tr>
+                <td>${customer_id}</td>
+                <td>${rounded}</td>
+                <td>${charge.toFixed(2)}</td>
+                <td>${error ? "YES" : "NO"}</td>
+            </tr>`;
+
+            report.push([customer_id, rounded, charge.toFixed(2), error ? "1" : "0"]);
+        });
+
+        html += "</table>";
+        $("#output").html(html);
+
+    
+        $("#summary").html(`
+            Total receipts: <b>$${totalReceipts.toFixed(2)}</b><br>
+            # of customers charged daily max: <b>${dailyMaxCount}</b><br>
+            Average charge per customer: <b>$${(totalReceipts / rows.length).toFixed(2)}</b><br>
+            Longest stay (hrs): <b>${longestStay}</b><br>
+            Customer(s) with longest stay: <b>${longestCustomers.join(", ")}</b>
+        `);
+
+        let csvContent = makeCSV(report);
+        let blob = new Blob([csvContent], { type: "text/csv" });
+        let url = URL.createObjectURL(blob);
+
+        $("#downloadBtn")
+            .show()
+            .off("click")
+            .on("click", function() {
+                let a = document.createElement("a");
+                a.href = url;
+                a.download = "charges_report.csv";
+                a.click();
+            });
+    };
+});
+
+</script>
+
+</body>
+</html>
